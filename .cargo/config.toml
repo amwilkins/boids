@@ -6,3 +6,7 @@ opt-level = 2
 
 [build]
 target = "wasm32-unknown-unknown"
+
+[profile.dev]
+debug = 0
+strip = "debuginfo"
