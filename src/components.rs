@@ -1,3 +1,5 @@
+use bevy::math::bounding::RayCast2d;
+
 pub use crate::prelude::*;
 
 
@@ -13,6 +15,13 @@ pub struct Boid {
     pub position: Vec2,
     pub velocity: Vec2,
     pub acceleration: Vec2,
+    //pub eyes: Eyes,
+}
+
+#[derive(Component, Debug)]
+pub struct Eyes {
+        pub left: RayCast2d,
+        pub right: RayCast2d,
 }
 
 

@@ -18,7 +18,7 @@ mod prelude {
     pub const GRID_WIDTH: f32 = 0.05;
     //pub const PLAYER_SIZE: f32 = 0.7;
     pub const BOID_COUNT: u32 = 50;
-    pub const BOID_MAX_SPEED: f32 = 3.0;
+    pub const BOID_MAX_SPEED: f32 = 0.05;
 }
 
 use prelude::*;
@@ -57,6 +57,7 @@ fn main() {
                 //spawn_mob.after(generate_map),
             ),
         )
+        //.add_systems(Update, flock::show_boid_eyes)
         .add_systems(
             FixedUpdate,
             (
