@@ -10,3 +10,6 @@ target = "wasm32-unknown-unknown"
 [profile.dev]
 debug = 0
 strip = "debuginfo"
+
+[target.'cfg(target_os = "linux")']
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

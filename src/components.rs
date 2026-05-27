@@ -8,24 +8,39 @@ pub struct Collider;
 #[derive(Component)]
 pub struct Player;
 
-#[derive(Component)]
-pub struct Mob;
+#[derive(Component, Debug)]
+pub struct Boid {
+    pub position: Vec2,
+    pub velocity: Vec2,
+    pub acceleration: Vec2,
+}
 
-#[derive(Component)]
-pub struct ChasePlayer;
 
 // #[derive(Component)]
-// pub struct Flock;
+// pub struct ChasePlayer;
+
+#[derive(Component)]
+pub struct Flock;
 
 #[derive(Component, Clone, Copy)]
 #[require(Collider)]
 pub struct Wall;
 
+// #[derive(Component)]
+// pub struct Sprite {
+// }
+
+#[derive(Resource)]
+pub struct SpriteSheetAtlas {
+    pub handle: Handle<TextureAtlasLayout>,
+}
+
+
 // #[derive(Resource, Default, Clone, Copy, Debug, Deref, DerefMut)]
 // pub struct SessionSeed(pub u64);
 
 
-#[derive(Resource, Default)]
-pub struct Game {
-    pub score: i32,
-}
+// #[derive(Resource, Default)]
+// pub struct Game {
+//     pub score: i32,
+// }
