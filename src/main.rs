@@ -22,7 +22,7 @@ mod prelude {
     pub use crate::spawner::*;
     pub use crate::systems::*;
     pub use bevy::prelude::*;
-    pub const MAP_SIZE: u32 = 100;
+    pub const MAP_SIZE: u32 = 200;
     pub const GRID_WIDTH: f32 = 0.05;
 }
 
@@ -98,6 +98,14 @@ fn setup(mut commands: Commands) {
                 ..default()
             },
             FpsText,
+        ))
+        .with_child((
+            Text::new("\nWASD to move camera\n, and . to zoom"),
+            //TextSpan::default(),
+            TextFont {
+                font_size: 1.0,
+                ..default()
+            },
         ));
 
     // Horizontal lines

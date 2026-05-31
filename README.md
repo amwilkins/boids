@@ -33,6 +33,10 @@ Set default job:
 ```bacon.toml
 default_job = "run-long"
 ```
+Then run with:
+```
+bacon
+```
 
 This sets the default build target:
 ```.cargo/config.toml

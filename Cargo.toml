@@ -7,6 +7,7 @@ edition = "2024"
 bevy = { version = "0.18.1", default-features = false, features = ["2d", "dynamic_linking"] }
 bevy_rand = { version = "0.14.2", features = ["wasm_js", "wyrand"] }
 console_log = "1.0.0"
+rand = "0.10.1"
 rand_core = "0.10.1"
 
 

@@ -10,9 +10,7 @@ pub fn create_partitions(
     grid.cells.clear();
 
     boid_query.iter().for_each(|entity| {
-        let boid_position = entity.get::<Boid>().unwrap().position;
-
-        grid.insert(&entity.id(), &boid_position);
+        let boid = entity.get::<Boid>().unwrap();
+        grid.insert(&boid);
     });
 }
-

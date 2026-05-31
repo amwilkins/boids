@@ -1,4 +1,10 @@
+use bevy::ecs::relationship::RelationshipSourceCollection;
+
 pub use crate::prelude::*;
+use rand::{
+    seq::{IndexedRandom, SliceRandom},
+    *,
+};
 use std::collections::HashMap;
 
 #[derive(Resource)]
@@ -9,7 +15,7 @@ pub struct SpriteSheetAtlas {
 #[derive(Resource, Debug)]
 pub struct Grid {
     pub cell_size: f32,
-    pub cells: HashMap<(i32, i32), Vec<Entity>>,
+    pub cells: HashMap<(i32, i32), Vec<Boid>>,
 }
 
 impl FromWorld for Grid {
@@ -19,35 +25,47 @@ impl FromWorld for Grid {
         Grid {
             cell_size: boid_settings.cohesion_range,
             cells: HashMap::with_capacity(boid_settings.count),
-        } } }
+        }
+    }
+}
 
 impl Grid {
-    pub fn insert(&mut self, entity: &Entity, pos: &Vec2) {
+    pub fn insert(&mut self, boid: &Boid) {
         let cell = (
-            (pos.x / self.cell_size) as i32,
-            (pos.y / self.cell_size) as i32,
+            (boid.position.x / self.cell_size) as i32,
+            (boid.position.y / self.cell_size) as i32,
         );
-        self.cells.entry(cell).or_default().push(entity.clone());
+        self.cells.entry(cell).or_default().push(boid.clone());
     }
 
-    pub fn get_neighboids(&self, pos: Vec2) -> Vec<Entity> {
+    pub fn get_neighboids(&self, pos: Vec2, _n: usize) -> Vec<Boid> {
         let (cx, cy) = (
             (pos.x / self.cell_size) as i32,
             (pos.y / self.cell_size) as i32,
         );
-        let mut result = Vec::new();
+        //let mut near_cells = Vec::new();
+        let mut result = self.cells.get(&(cx, cy)).unwrap().clone();
+        //let mut result = Vec::new();
 
         for dx in -1..=1 {
             for dy in -1..=1 {
                 let cell = (cx + dx, cy + dy);
-                if let Some(ids) = self.cells.get(&cell) {
-                    result.extend(ids);
+                // if let Some(boids) = self.cells.get(&cell) {
+                //     result.extend(boids.clone());
+                if cell != (cx, cy)
+                    && let Some(boids) = self.cells.get(&cell)
+                {
+                    //near_cells.extend(boids.clone());
+                    result.extend(boids.clone());
                 }
             }
         }
+        // //result = local_cell.append(near_cells.sample(&mut rand::rng(), n - local_cell.len()).cloned().collect());
+        // near_cells.shuffle(&mut rand::rng());
+        // near_cells.truncate(50);
+        // result.append(&mut near_cells);
         result
     }
-
 }
 
 #[derive(Resource, Debug)]
@@ -69,19 +87,19 @@ pub struct BoidSettings {
 impl Default for BoidSettings {
     fn default() -> Self {
         BoidSettings {
-            count: 200,
-            cohesion_range: 15.0,
-            alignment_range: 15.0,
-            separation_range: 4.0,
+            count: 2000,
+            cohesion_range: 10.0,
+            alignment_range: 8.0,
+            separation_range: 3.0,
             min_distance_between_boids: 0.2,
-            cohesion_coeff: 0.001,
+            cohesion_coeff: 0.002,
             //cohesion_coeff: 0.0005,
-            alignment_coeff: 0.8,
+            alignment_coeff: 0.6,
             separation_coeff: 0.003,
             collision_coeff: 40.0,
             random_coeff: 0.4,
-            min_speed: 0.09,
-            max_speed: 0.15,
+            min_speed: 0.12,
+            max_speed: 0.16,
         }
     }
 }

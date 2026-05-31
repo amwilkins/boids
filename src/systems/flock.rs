@@ -15,35 +15,31 @@ pub fn flock(
     diagnostics: Res<DiagnosticsStore>,
     grid: ResMut<Grid>,
 ) {
-    let boid_positions: Vec<Vec2> = boid_query
-        .iter_mut()
-        .map(|x| x.1.translation.xy())
-        .collect();
-    let other_boids: Vec<Boid> = boid_query.iter().map(|x| x.0.clone()).collect();
-    let boid_prime = boid_query.iter().nth(0).unwrap().2;
+    let boid_prime = boid_query.iter().nth(0).unwrap();
+    gizmos.circle_2d(boid_prime.0.position, boid_settings.cohesion_range, WHITE);
 
     // // Logging
     if let Some(frame) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_COUNT) {
         let frame = frame.value().unwrap();
         if frame % (60.0 * 2.0) == 0.0 {
-            for boid in boid_query.iter_mut() {
-                let cell = (
-                    (boid.0.position.x / grid.cell_size) as i32,
-                    (boid.0.position.y / grid.cell_size) as i32,
-                );
-                let others = grid.get_neighboids(boid.0.position);
-                //info!("Boid Prime: {} - {:?}", boid_prime, cell);
-                // info!("Boids in cell {:?}; {:?}", &cell, grid.cells.get(&cell).iter().len());
-                info!("Neighboids: {:?}", others);
-                break;
-            }
+            let others = grid.get_neighboids(boid_prime.0.position, 100);
+            let cell = (
+                (boid_prime.0.position.x / grid.cell_size) as i32,
+                (boid_prime.0.position.y / grid.cell_size) as i32,
+            );
+            info!("Boid Prime cell: {:?}", cell);
+            info!("Neighboids: {:?}", others.len());
         }
     }
 
     // calculate new state
     for mut query in boid_query.iter_mut() {
-        let transform = query.1;
+        let mut neighbors = grid.get_neighboids(query.0.position, 100);
+        //neighbors.truncate(100);
 
+        let neighbor_positions = neighbors.iter().map(|x| x.position).collect();
+
+        let transform = query.1;
         let old_acceleration = query.0.acceleration.clone().normalize_or_zero();
 
         // start with a small random acceleration
@@ -56,7 +52,7 @@ pub fn flock(
         // keep seperate
         query.0.acceleration += seperation(
             &transform.translation.xy(),
-            &boid_positions,
+            &neighbor_positions,
             &boid_settings.separation_range,
             &boid_settings.separation_coeff,
             &boid_settings.min_distance_between_boids,
@@ -66,7 +62,7 @@ pub fn flock(
         // keep together
         query.0.acceleration += cohesion(
             &transform.translation.xy(),
-            &boid_positions,
+            &neighbor_positions,
             &boid_settings.cohesion_range,
             &boid_settings.cohesion_coeff,
         );
@@ -75,7 +71,7 @@ pub fn flock(
         let boid_clone = query.0.clone();
         query.0.velocity += alignment(
             &boid_clone,
-            &other_boids,
+            &neighbors,
             &boid_settings.alignment_range,
             &boid_settings.alignment_coeff,
         );
@@ -97,12 +93,6 @@ pub fn flock(
         }
         query.0.velocity = vel.clamp(Vec2::splat(-max_speed), Vec2::splat(max_speed));
         query.0.position += vel;
-
-        if query.2 == boid_prime {
-            //let heading_angle = transform.rotation.to_euler(EulerRot::XYZ).2;
-            //show_vision_range(&mut gizmos, &query.0.position, boid_settings.cohesion_range);
-            gizmos.circle_2d(query.0.position, boid_settings.cohesion_range, WHITE);
-        }
     }
 
     // apply changes
