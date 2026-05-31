@@ -1,24 +1,29 @@
-use bevy::{prelude::*, window::WindowResolution};
+use bevy::{
+    diagnostic::FrameTimeDiagnosticsPlugin,
+    prelude::*,
+    //text::{FontFeatureTag, FontFeatures, Underline},
+    window::WindowResolution,
+};
+
 use bevy_rand::prelude::*;
 
 mod components;
 mod input;
 mod map;
+mod resources;
 mod spawner;
 mod systems;
 
 mod prelude {
     pub use crate::components::*;
+    pub use crate::resources::*;
     //pub use crate::input::*;
     pub use crate::map::*;
     pub use crate::spawner::*;
     pub use crate::systems::*;
     pub use bevy::prelude::*;
-    pub const MAP_SIZE: u32 = 50;
+    pub const MAP_SIZE: u32 = 100;
     pub const GRID_WIDTH: f32 = 0.05;
-    //pub const PLAYER_SIZE: f32 = 0.7;
-    pub const BOID_COUNT: u32 = 50;
-    pub const BOID_MAX_SPEED: f32 = 0.05;
 }
 
 use prelude::*;
@@ -42,30 +47,26 @@ fn main() {
             ..default()
         }))
         // randomness
-        .add_plugins(EntropyPlugin::<WyRand>::with_seed(42u64.to_ne_bytes()))
+        .add_plugins((
+            EntropyPlugin::<WyRand>::with_seed(42u64.to_ne_bytes()),
+            FrameTimeDiagnosticsPlugin::default(),
+        ))
+        .init_resource::<BoidSettings>()
         .init_resource::<SpriteSheetAtlas>()
+        .init_resource::<Grid>()
         // background color
         .insert_resource(ClearColor(Color::srgb(0.2, 0.2, 0.2)))
-        .add_systems(
-            Startup,
-            (
-                setup,
-                generate_map,
-                spawn_boids,
-                //spawn_player,
-                //spawn_player.after(generate_map),
-                //spawn_mob.after(generate_map),
-            ),
-        )
-        //.add_systems(Update, flock::show_boid_eyes)
+        .add_systems(Startup, (setup, generate_map, spawn_boids))
+        .add_systems(Update, text::update_fps)
         .add_systems(
             FixedUpdate,
             (
+                spatial_partition::create_partitions,
                 //move_player,
                 camera_follow,
                 flock::flock,
-                //chaseplayer::chase_player
-            ),
+                camera_control::controls,
+            ).chain(),
         )
         .run();
 }
@@ -73,9 +74,31 @@ fn main() {
 fn setup(mut commands: Commands) {
     // Camera
     commands.spawn((
-        Camera2d::default(),
+        Camera2d,
         Transform::from_xyz(MAP_SIZE as f32 / 2.0, MAP_SIZE as f32 / 2.0, 100.0),
+        Projection::Orthographic(OrthographicProjection {
+            scale: 1.8,
+            ..OrthographicProjection::default_2d()
+        }),
     ));
+
+    // FPS text
+    commands
+        .spawn((
+            Text::new("FPS: "),
+            TextFont {
+                font_size: 1.0,
+                ..default()
+            },
+        ))
+        .with_child((
+            TextSpan::default(),
+            TextFont {
+                font_size: 1.0,
+                ..default()
+            },
+            FpsText,
+        ));
 
     // Horizontal lines
     for i in 0..=MAP_SIZE {

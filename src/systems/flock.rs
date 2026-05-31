@@ -1,174 +1,240 @@
 use bevy::color::palettes::css::*;
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy::math::bounding::RayCast2d;
+use bevy::math::ops::sqrt;
 use bevy_rand::prelude::*;
 use rand_core::Rng;
-use std::ops::Div;
-
-use bevy::math::{bounding::RayCast2d, VectorSpace};
 
 use crate::prelude::*;
 
 pub fn flock(
-    mut boids: Query<(&mut Boid, &mut Transform), With<Flock>>,
-    // readonly_boids: Query<&mut Boid, With<Flock>>,
-    time: Res<Time>,
+    mut boid_query: Query<(&mut Boid, &mut Transform, Entity), With<Flock>>,
     mut gizmos: Gizmos,
     mut rng: Single<&mut WyRand, With<GlobalRng>>,
+    boid_settings: Res<BoidSettings>,
+    diagnostics: Res<DiagnosticsStore>,
+    grid: ResMut<Grid>,
 ) {
-    let centeroid: Vec2 =
-        (boids.iter().map(|x| x.1.translation.xy()).sum::<Vec2>()).div(boids.count() as f32);
+    let boid_positions: Vec<Vec2> = boid_query
+        .iter_mut()
+        .map(|x| x.1.translation.xy())
+        .collect();
+    let other_boids: Vec<Boid> = boid_query.iter().map(|x| x.0.clone()).collect();
+    let boid_prime = boid_query.iter().nth(0).unwrap().2;
 
-    let boid_positions: Vec<Vec2> = boids.iter_mut().map(|x| x.1.translation.xy()).collect();
-    let boid_velocities: Vec<Vec2> = boids.iter_mut().map(|x| x.0.velocity).collect();
-
-    // calculate new state
-    for query in boids.iter_mut() {
-        let mut boid = query.0;
-        let transform = query.1;
-        let pos = boid.position.clone();
-
-        // currently just random acceleration
-        boid.acceleration = Vec2::new(
-            (rng.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0,
-            (rng.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0,
-        );
-        stay_in_bounds(&mut boid);
-
-        // // center of boids
-        // boid.acceleration += (centeroid - pos) * 0.01;
-        
-        // keep seperate
-        boid.acceleration += seperation(&transform.translation.xy(), &boid_positions);
-
-        // keep seperate
-        boid.acceleration += cohesion(&transform.translation.xy(), &boid_positions);
-
-        // align
-        let mut vel = boid.velocity;
-        boid.acceleration += alignment(&vel, &boid_positions, &boid_velocities);
-
-        let acc = boid.acceleration / 1000.0;
-        boid.velocity += acc;
-        // boid.velocity = boid.velocity.clamp(
-        //     //-Vec2::splat(BOID_MAX_SPEED).div(2 as f32),
-        //     -Vec2::splat(0.5),
-        //     Vec2::splat(0.5),
-        //     //Vec2::splat(BOID_MAX_SPEED).div(2 as f32),
-        // );
-
-        // boid.velocity.x = boid.velocity.x.clamp(-BOID_MAX_SPEED, BOID_MAX_SPEED);
-        // boid.velocity.y = boid.velocity.y.clamp(-BOID_MAX_SPEED, BOID_MAX_SPEED);
-
-        vel = boid.velocity.normalize_or_zero() / 10.0;
-        boid.position += vel;
-        boid.position = boid
-            .position
-            .clamp(Vec2::splat(0.0), Vec2::splat(MAP_SIZE as f32));
-
-        let heading_angle = transform.rotation.to_euler(EulerRot::XYZ).2;
-        create_raycast(&mut gizmos, &boid.position, heading_angle);
+    // // Logging
+    if let Some(frame) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_COUNT) {
+        let frame = frame.value().unwrap();
+        if frame % (60.0 * 2.0) == 0.0 {
+            for boid in boid_query.iter_mut() {
+                let cell = (
+                    (boid.0.position.x / grid.cell_size) as i32,
+                    (boid.0.position.y / grid.cell_size) as i32,
+                );
+                let others = grid.get_neighboids(boid.0.position);
+                //info!("Boid Prime: {} - {:?}", boid_prime, cell);
+                // info!("Boids in cell {:?}; {:?}", &cell, grid.cells.get(&cell).iter().len());
+                info!("Neighboids: {:?}", others);
+                break;
+            }
+        }
     }
 
-    // if time.elapsed_secs_f64().round() % 10.0 == 0.0 {
-    //     for boid in &boids {
-    //         info!("Boid info: {:?}", boid.0);
-    //         info!("Boid transform: {:?}", boid.1);
-    //         info!("Boid rotation X: {:?}");
-    //         break;
-    //     }
-    // }
+    // calculate new state
+    for mut query in boid_query.iter_mut() {
+        let transform = query.1;
+
+        let old_acceleration = query.0.acceleration.clone().normalize_or_zero();
+
+        // start with a small random acceleration
+        // actually make this random rotate left/right a small amount
+        query.0.acceleration += Vec2::new(
+            (rng.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0,
+            (rng.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0,
+        ) * boid_settings.random_coeff;
+
+        // keep seperate
+        query.0.acceleration += seperation(
+            &transform.translation.xy(),
+            &boid_positions,
+            &boid_settings.separation_range,
+            &boid_settings.separation_coeff,
+            &boid_settings.min_distance_between_boids,
+            &boid_settings.collision_coeff,
+        );
+
+        // keep together
+        query.0.acceleration += cohesion(
+            &transform.translation.xy(),
+            &boid_positions,
+            &boid_settings.cohesion_range,
+            &boid_settings.cohesion_coeff,
+        );
+
+        // align
+        let boid_clone = query.0.clone();
+        query.0.velocity += alignment(
+            &boid_clone,
+            &other_boids,
+            &boid_settings.alignment_range,
+            &boid_settings.alignment_coeff,
+        );
+
+        query.0.acceleration += stay_in_bounds(&boid_clone);
+        query.0.acceleration = query
+            .0
+            .acceleration
+            .clamp(Vec2::splat(-1.0), Vec2::splat(1.0));
+        query.0.acceleration = (query.0.acceleration + old_acceleration) / 25.0;
+
+        let mut vel = query.0.velocity + query.0.acceleration;
+        let max_speed = boid_settings.max_speed;
+        let current_speed = sqrt(vel.x * vel.x + vel.y * vel.y);
+
+        if current_speed < boid_settings.min_speed {
+            vel.x = (vel.x / current_speed) * boid_settings.min_speed;
+            vel.y = (vel.y / current_speed) * boid_settings.min_speed;
+        }
+        query.0.velocity = vel.clamp(Vec2::splat(-max_speed), Vec2::splat(max_speed));
+        query.0.position += vel;
+
+        if query.2 == boid_prime {
+            //let heading_angle = transform.rotation.to_euler(EulerRot::XYZ).2;
+            //show_vision_range(&mut gizmos, &query.0.position, boid_settings.cohesion_range);
+            gizmos.circle_2d(query.0.position, boid_settings.cohesion_range, WHITE);
+        }
+    }
 
     // apply changes
-    for mut boid in boids.iter_mut() {
-        update_translation(&boid.0, &mut boid.1, &time);
+    for mut boid in boid_query.iter_mut() {
+        update_translation(&boid.0, &mut boid.1);
     }
 }
 
-fn update_translation(boid: &Boid, transform: &mut Transform, time: &Res<Time>) {
-    let heading = boid.position + boid.velocity;
+fn update_translation(boid: &Boid, transform: &mut Transform) {
+    // move
     transform.translation = boid.position.extend(50.0);
+    // rotate
+    let heading = transform.translation.xy() + boid.velocity;
     transform.look_at(heading.extend(0.0), Dir3::Z);
 }
 
-fn seperation(boid: &Vec2, other_boids: &Vec<Vec2>) -> Vec2 {
+fn seperation(
+    boid: &Vec2,
+    other_boids: &Vec<Vec2>,
+    seperation_range: &f32,
+    seperation_coeff: &f32,
+    min_distance_between_boids: &f32,
+    collision_coeff: &f32,
+) -> Vec2 {
     let mut acceleration = Vec2::new(0.0, 0.0);
 
     other_boids.iter().for_each(|pos| {
-        if pos.distance_squared(*boid) < 6.0 {
-            acceleration += boid - pos
+        let distance = pos.distance(*boid);
+
+        // if almost crashing, strong seperation
+        if distance < *min_distance_between_boids && distance > 0.0 {
+            acceleration += (boid - pos) * collision_coeff
+
+        // standard seperation
+        } else if distance < *seperation_range {
+            acceleration += (boid - pos) * seperation_coeff
         }
     });
-
     acceleration
 }
 
-fn cohesion(boid: &Vec2, other_boids: &Vec<Vec2>) -> Vec2 {
-    let mut acceleration = Vec2::new(0.0, 0.0);
+fn cohesion(
+    boid: &Vec2,
+    other_boids: &Vec<Vec2>,
+    cohesion_range: &f32,
+    cohesion_coeff: &f32,
+) -> Vec2 {
+    let mut acceleration = Vec2::ZERO;
+    let mut nearby_boids = 0;
 
     other_boids.iter().for_each(|pos| {
-        if pos.distance_squared(*boid) < 36.0 {
-            acceleration -= boid - pos
+        if pos.distance(*boid) < *cohesion_range {
+            nearby_boids += 1;
+            acceleration += pos;
         }
     });
 
+    if nearby_boids > 0 {
+        acceleration /= nearby_boids as f32;
+        acceleration = (acceleration - *boid) * *cohesion_coeff;
+    }
     acceleration
 }
 
+fn alignment(
+    boid: &Boid,
+    other_boids: &Vec<Boid>,
+    alignment_range: &f32,
+    alignment_coeff: &f32,
+) -> Vec2 {
+    let mut velocity = Vec2::new(0.0, 0.0);
+    let mut nearby_boids = 0;
 
-fn alignment(boid: &Vec2, other_pos: &Vec<Vec2>, other_vec: &Vec<Vec2>) -> Vec2 {
-    let mut acceleration = Vec2::new(0.0, 0.0);
-    let other_boids: Vec<(&Vec2, &Vec2)> = other_pos.iter().zip(other_vec.iter()).collect();
-
-    other_boids.iter().for_each(|(pos, vec)| {
-        if pos.distance_squared(*boid) < 64.0 {
-            acceleration += *vec
+    other_boids.iter().for_each(|other| {
+        let distance = other.position.distance(boid.position);
+        if distance < *alignment_range && distance > 0.0 {
+            nearby_boids += 1;
+            velocity += other.velocity;
         }
     });
-
-    acceleration
+    if nearby_boids > 0 {
+        velocity /= nearby_boids as f32;
+        velocity = (velocity - boid.velocity) * *alignment_coeff;
+    }
+    velocity
 }
 
 // avoiding walls
-fn stay_in_bounds(boid: &mut Boid) {
-    // if boid.position.x < (MAP_SIZE as f32 / 2.0) {
-    //     boid.acceleration.x += 0.05
-    // } else {
-    //     boid.acceleration.x -= 0.05
-    // }
-    // if boid.position.y < (MAP_SIZE as f32 / 2.0) {
-    //     boid.acceleration.y += 0.05
-    // } else {
-    //     boid.acceleration.y -= 0.05
-    // }
+fn stay_in_bounds(boid: &Boid) -> Vec2 {
+    let mut acceleration = Vec2::ZERO;
+    let turn_factor: f32 = 0.5;
+    let margin = 5.0;
 
-    if boid.position.x < 4.0 {
-        boid.acceleration.x += 1.0
+    // avoid walls
+    if boid.position.x < margin {
+        let force_multiplier = (margin - boid.position.x) / margin;
+        acceleration.x += (margin - boid.position.x) * turn_factor * force_multiplier;
+    } else if boid.position.x > (MAP_SIZE as f32 - margin) {
+        let force_multiplier = (MAP_SIZE as f32 - margin - boid.position.x) / margin;
+        acceleration.x -= (margin - boid.position.x) * turn_factor * force_multiplier;
     }
-    if boid.position.x > (MAP_SIZE as f32 - 4.0) {
-        boid.acceleration.x -= 1.0
+
+    if boid.position.y < margin {
+        let force_multiplier = (margin - boid.position.y) / margin;
+        acceleration.y += (margin - boid.position.y) * turn_factor * force_multiplier;
+    } else if boid.position.y > (MAP_SIZE as f32 - margin) {
+        let force_multiplier = (MAP_SIZE as f32 - margin - boid.position.y) / margin;
+        acceleration.y -= (margin - boid.position.y) * turn_factor * force_multiplier;
     }
-    if boid.position.y < 4.0 {
-        boid.acceleration.y += 1.0
-    }
-    if boid.position.y > (MAP_SIZE as f32 - 4.0) {
-        boid.acceleration.y -= 1.0
-    }
+
+    acceleration
 }
 
-fn create_raycast(gizmos: &mut Gizmos, pos: &Vec2, heading: f32) {
-    let left_dir = Dir2::new(Vec2::from_angle(1.85 + heading)).unwrap();
-    let right_dir = Dir2::new(Vec2::from_angle(1.3 + heading)).unwrap();
+fn show_vision_range(gizmos: &mut Gizmos, pos: &Vec2, size: f32) {
+    gizmos.circle_2d(*pos, size, WHITE);
 
-    let left_ray = Ray2d {
-        origin: *pos,
-        direction: left_dir,
-    };
-    let right_ray = Ray2d {
-        origin: *pos,
-        direction: right_dir,
-    };
-
-    let left_raycast = RayCast2d::from_ray(left_ray, 5.0);
-    let right_raycast = RayCast2d::from_ray(right_ray, 5.0);
+    //create_raycast(&mut gizmos, &query.0.position, heading_angle);
+    // fn create_raycast(gizmos: &mut Gizmos, pos: &Vec2, heading: f32) {
+    //     let left_dir = Dir2::new(Vec2::from_angle(1.85 + heading)).unwrap();
+    //     let right_dir = Dir2::new(Vec2::from_angle(1.3 + heading)).unwrap();
+    //
+    //     let left_ray = Ray2d {
+    //         origin: *pos,
+    //         direction: left_dir,
+    //     };
+    //     let right_ray = Ray2d {
+    //         origin: *pos,
+    //         direction: right_dir,
+    //     };
+    //
+    //     let _left_raycast = RayCast2d::from_ray(left_ray, 5.0);
+    //     let _right_raycast = RayCast2d::from_ray(right_ray, 5.0);
 
     // gizmos.line_2d(
     //     *pos,

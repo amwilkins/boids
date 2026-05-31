@@ -1,7 +1,5 @@
-use bevy::math::bounding::RayCast2d;
-
 pub use crate::prelude::*;
-
+//use bevy_spatial::kdtree::KDTree2;
 
 // Default must be implemented to define this as a required component for the Wall component below
 #[derive(Component, Default)]
@@ -10,23 +8,13 @@ pub struct Collider;
 #[derive(Component)]
 pub struct Player;
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone)]
 pub struct Boid {
     pub position: Vec2,
     pub velocity: Vec2,
     pub acceleration: Vec2,
-    //pub eyes: Eyes,
 }
 
-#[derive(Component, Debug)]
-pub struct Eyes {
-        pub left: RayCast2d,
-        pub right: RayCast2d,
-}
-
-
-// #[derive(Component)]
-// pub struct ChasePlayer;
 
 #[derive(Component)]
 pub struct Flock;
@@ -35,21 +23,9 @@ pub struct Flock;
 #[require(Collider)]
 pub struct Wall;
 
-// #[derive(Component)]
-// pub struct Sprite {
-// }
+#[derive(Component)]
+pub struct FpsText;
 
-#[derive(Resource)]
-pub struct SpriteSheetAtlas {
-    pub handle: Handle<TextureAtlasLayout>,
-}
+#[derive(Component, Default)]
+pub struct SpatialEntity;
 
-
-// #[derive(Resource, Default, Clone, Copy, Debug, Deref, DerefMut)]
-// pub struct SessionSeed(pub u64);
-
-
-// #[derive(Resource, Default)]
-// pub struct Game {
-//     pub score: i32,
-// }
