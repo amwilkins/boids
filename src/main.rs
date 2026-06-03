@@ -22,7 +22,7 @@ mod prelude {
     pub use crate::spawner::*;
     pub use crate::systems::*;
     pub use bevy::prelude::*;
-    pub const MAP_SIZE: u32 = 200;
+    pub const MAP_SIZE: u32 = 400;
     pub const GRID_WIDTH: f32 = 0.05;
 }
 

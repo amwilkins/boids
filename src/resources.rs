@@ -1,11 +1,10 @@
-use bevy::ecs::relationship::RelationshipSourceCollection;
 
 pub use crate::prelude::*;
-use rand::{
-    seq::{IndexedRandom, SliceRandom},
-    *,
-};
+// use rand::{
+//     *,
+// };
 use std::collections::HashMap;
+//use std::collections::BTreeMap;
 
 #[derive(Resource)]
 pub struct SpriteSheetAtlas {
@@ -15,6 +14,7 @@ pub struct SpriteSheetAtlas {
 #[derive(Resource, Debug)]
 pub struct Grid {
     pub cell_size: f32,
+    //pub cells: BTreeMap<(i32, i32), Vec<Boid>>,
     pub cells: HashMap<(i32, i32), Vec<Boid>>,
 }
 
@@ -24,6 +24,7 @@ impl FromWorld for Grid {
 
         Grid {
             cell_size: boid_settings.cohesion_range,
+            //cells: BTreeMap::new(),
             cells: HashMap::with_capacity(boid_settings.count),
         }
     }
@@ -38,25 +39,21 @@ impl Grid {
         self.cells.entry(cell).or_default().push(boid.clone());
     }
 
-    pub fn get_neighboids(&self, pos: Vec2, _n: usize) -> Vec<Boid> {
+    pub fn get_neighboids(&self, pos: Vec2, _n: usize) -> Vec<&Boid> {
         let (cx, cy) = (
             (pos.x / self.cell_size) as i32,
             (pos.y / self.cell_size) as i32,
         );
-        //let mut near_cells = Vec::new();
-        let mut result = self.cells.get(&(cx, cy)).unwrap().clone();
-        //let mut result = Vec::new();
+        let mut result = Vec::<&Boid>::with_capacity(450);
+        result.extend(self.cells.get(&(cx, cy)).unwrap());//.clone());
 
         for dx in -1..=1 {
             for dy in -1..=1 {
                 let cell = (cx + dx, cy + dy);
-                // if let Some(boids) = self.cells.get(&cell) {
-                //     result.extend(boids.clone());
                 if cell != (cx, cy)
                     && let Some(boids) = self.cells.get(&cell)
                 {
-                    //near_cells.extend(boids.clone());
-                    result.extend(boids.clone());
+                    result.extend(boids);
                 }
             }
         }
@@ -87,7 +84,7 @@ pub struct BoidSettings {
 impl Default for BoidSettings {
     fn default() -> Self {
         BoidSettings {
-            count: 2000,
+            count: 5000,
             cohesion_range: 10.0,
             alignment_range: 8.0,
             separation_range: 3.0,

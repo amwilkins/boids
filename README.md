@@ -1,5 +1,8 @@
 # Bevy tests
 
+Boid simulation in the bevy engine.
+
+
 ## Wasm
 
 Install the wasm32 target and download a wasm web server for testing.

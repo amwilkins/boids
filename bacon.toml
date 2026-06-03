@@ -102,7 +102,7 @@ scroll_anchor = "auto"
 # long running programs (uncomment it if you need it)
 [jobs.run-long]
 command = [
-    "cargo", "run",
+    "cargo", "run", "--release"
     # put launch parameters for your program behind a `--` separator
 ]
 need_stdout = true

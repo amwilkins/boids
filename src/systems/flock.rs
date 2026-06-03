@@ -12,30 +12,29 @@ pub fn flock(
     mut gizmos: Gizmos,
     mut rng: Single<&mut WyRand, With<GlobalRng>>,
     boid_settings: Res<BoidSettings>,
-    diagnostics: Res<DiagnosticsStore>,
+    //diagnostics: Res<DiagnosticsStore>,
     grid: ResMut<Grid>,
 ) {
     let boid_prime = boid_query.iter().nth(0).unwrap();
     gizmos.circle_2d(boid_prime.0.position, boid_settings.cohesion_range, WHITE);
 
-    // // Logging
-    if let Some(frame) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_COUNT) {
-        let frame = frame.value().unwrap();
-        if frame % (60.0 * 2.0) == 0.0 {
-            let others = grid.get_neighboids(boid_prime.0.position, 100);
-            let cell = (
-                (boid_prime.0.position.x / grid.cell_size) as i32,
-                (boid_prime.0.position.y / grid.cell_size) as i32,
-            );
-            info!("Boid Prime cell: {:?}", cell);
-            info!("Neighboids: {:?}", others.len());
-        }
-    }
+    // // // Logging
+    // if let Some(frame) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_COUNT) {
+    //     let frame = frame.value().unwrap();
+    //     if frame % (60.0 * 2.0) == 0.0 {
+    //         let others = grid.get_neighboids(boid_prime.0.position, 100);
+    //         let cell = (
+    //             (boid_prime.0.position.x / grid.cell_size) as i32,
+    //             (boid_prime.0.position.y / grid.cell_size) as i32,
+    //         );
+    //         info!("Boid Prime cell: {:?}", cell);
+    //         info!("Neighboids: {:?}", others.len());
+    //     }
+    // }
 
     // calculate new state
     for mut query in boid_query.iter_mut() {
-        let mut neighbors = grid.get_neighboids(query.0.position, 100);
-        //neighbors.truncate(100);
+        let neighbors = grid.get_neighboids(query.0.position, 100);
 
         let neighbor_positions = neighbors.iter().map(|x| x.position).collect();
 
@@ -76,6 +75,7 @@ pub fn flock(
             &boid_settings.alignment_coeff,
         );
 
+        // stay in bounds
         query.0.acceleration += stay_in_bounds(&boid_clone);
         query.0.acceleration = query
             .0
@@ -159,7 +159,7 @@ fn cohesion(
 
 fn alignment(
     boid: &Boid,
-    other_boids: &Vec<Boid>,
+    other_boids: &Vec<&Boid>,
     alignment_range: &f32,
     alignment_coeff: &f32,
 ) -> Vec2 {
