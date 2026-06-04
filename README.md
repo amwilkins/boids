@@ -3,7 +3,9 @@
 Boid simulation in the bevy engine.
 
 
-## Wasm
+## Setup
+
+### Wasm
 
 Install the wasm32 target and download a wasm web server for testing.
 ```
@@ -23,7 +25,7 @@ Run and open the project in browser.
 $ cargo run --target wasm32-unknown-unknown
 ```
 
-## Hot Reloading
+### Hot Reloading
 
 Bacon can be used for hot reloading:
 ```
@@ -45,3 +47,13 @@ This sets the default build target:
 ```.cargo/config.toml
 [build]
 target = "wasm32-unknown-unknown"
+```
+
+## Optimization history
+
+2026-05-27 - 500  - Naive 
+2026-05-27 - 2000 - Spatial partitions
+2026-06-02 - 4000 - Limit entity per cell
+2026-06-03 -  8000 - Reduce calls to spatial partition
+
+

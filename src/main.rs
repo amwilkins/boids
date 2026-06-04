@@ -22,7 +22,7 @@ mod prelude {
     pub use crate::spawner::*;
     pub use crate::systems::*;
     pub use bevy::prelude::*;
-    pub const MAP_SIZE: u32 = 400;
+    pub const MAP_SIZE: u32 = 250;
     pub const GRID_WIDTH: f32 = 0.05;
 }
 
@@ -57,16 +57,19 @@ fn main() {
         // background color
         .insert_resource(ClearColor(Color::srgb(0.2, 0.2, 0.2)))
         .add_systems(Startup, (setup, generate_map, spawn_boids))
-        .add_systems(Update, text::update_fps)
+        //.add_systems(PostStartup, log_state::log_state)
+        .add_systems(
+            Update,
+            (text::update_fps, camera_follow, camera_control::controls),
+        )
         .add_systems(
             FixedUpdate,
             (
                 spatial_partition::create_partitions,
-                //move_player,
-                camera_follow,
                 flock::flock,
                 camera_control::controls,
-            ).chain(),
+            )
+                .chain(),
         )
         .run();
 }
