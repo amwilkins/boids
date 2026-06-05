@@ -1,11 +1,10 @@
-use std::thread::Thread;
-
 use bevy::color::palettes::css::*;
-use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
-use bevy::math::bounding::RayCast2d;
+//use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+//use bevy::math::bounding::RayCast2d;
 use bevy::math::ops::sqrt;
-use bevy_rand::prelude::*;
-use rand_core::Rng;
+//use bevy_rand::prelude::*;
+use rand::RngExt;
+//use rand_core::Rng;
 
 use crate::prelude::*;
 use rand::seq::IteratorRandom;
@@ -13,123 +12,84 @@ use rand::seq::IteratorRandom;
 pub fn flock(
     mut boid_query: Query<(&mut Boid, &mut Transform, Entity), With<Flock>>,
     mut gizmos: Gizmos,
-    mut rng: Single<&mut WyRand, With<GlobalRng>>,
     boid_settings: Res<BoidSettings>,
-    diagnostics: Res<DiagnosticsStore>,
+    //diagnostics: Res<DiagnosticsStore>,
     grid_query: Res<Grid>,
 ) {
     let grid = grid_query.as_ref();
     let boid_prime = boid_query.iter().nth(0).unwrap();
     gizmos.circle_2d(boid_prime.0.position, boid_settings.cohesion_range, WHITE);
-    let mut rand = rand::rng();
 
-    // sets different groups to run each frame
-    let group = if let Some(frame) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_COUNT) {
-        (frame.value().unwrap() as u32 % 10) + 1 // + 1 to prevent div by zero later
-    } else {
-        rng.next_u32() % 10
-    };
+    boid_query.par_iter_mut().for_each(|(mut boid, _, _)| {
+        boid.acceleration = Vec2::ZERO;
+        random_turn(&mut boid);
+        update_from_neighbors(&mut boid, &boid_settings, &grid);
+        update_basics(&mut boid, &boid_settings);
+    });
 
-
-    for (mut boid, transform, entity) in boid_query.iter_mut() {
-        // update position from last change, but don't look at the other boids
-        if entity.index_u32() % group >= 6 { // this int is what % of boids update their heading
-            boid.acceleration = boid.acceleration.rotate(
-                Vec2::new(
-                    (rng.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0,
-                    (rng.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0,
-                ) * boid_settings.random_coeff,
-            );
-
-            let old_acceleration = boid.acceleration.clone().normalize_or_zero();
-            let pos = boid.position;
-            boid.acceleration += stay_in_bounds(pos);
-            boid.acceleration = (boid.acceleration + old_acceleration) / 25.0;
-            boid.acceleration = boid.acceleration.clamp(Vec2::splat(-1.0), Vec2::splat(1.0));
-
-            let vel = boid.velocity + boid.acceleration;
-            boid.velocity = vel.clamp(
-                Vec2::splat(-boid_settings.max_speed),
-                Vec2::splat(boid_settings.max_speed),
-            );
-            boid.position += vel;
-            continue;
-        }
-
-        let all_neighbors: Vec<&Boid> = get_near_boids(grid, boid.position, boid_settings.count);
-
-        let neighbors: Vec<&Boid> = all_neighbors
-            .iter()
-            .map(|x| *x)
-            .sample(&mut rand, boid_settings.other_boids_to_consider);
-        let neighbor_positions = neighbors.iter().map(|x| x.position).collect();
-        let old_acceleration = boid.acceleration.clone().normalize_or_zero();
-
-        boid.acceleration = boid.acceleration.rotate(
-            Vec2::new(
-                (rng.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0,
-                (rng.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0,
-            ) * boid_settings.random_coeff,
-        );
-
-        // keep seperate
-        boid.acceleration += seperation(
-            &transform.translation.xy(),
-            &neighbor_positions,
-            &boid_settings.separation_range,
-            &boid_settings.separation_coeff,
-            &boid_settings.min_distance_between_boids,
-            &boid_settings.collision_coeff,
-        );
-
-        // keep together
-        boid.acceleration += cohesion(
-            &transform.translation.xy(),
-            &neighbor_positions,
-            &boid_settings.cohesion_range,
-            &boid_settings.cohesion_coeff,
-        );
-
-        // align
-        let boid_clone = boid.clone();
-        boid.velocity += alignment(
-            &boid_clone,
-            &neighbors,
-            &boid_settings.alignment_range,
-            &boid_settings.alignment_coeff,
-        );
-
-        // stay in bounds
-        let pos = boid.position;
-        boid.acceleration += stay_in_bounds(pos);
-        boid.acceleration = (boid.acceleration + old_acceleration) / 25.0;
-        boid.acceleration = boid.acceleration.clamp(Vec2::splat(-1.0), Vec2::splat(1.0));
-
-        let mut vel = boid.velocity + boid.acceleration;
-        let max_speed = boid_settings.max_speed;
-        let current_speed = sqrt(vel.x * vel.x + vel.y * vel.y);
-
-        if current_speed < boid_settings.min_speed {
-            vel.x = (vel.x / current_speed) * boid_settings.min_speed;
-            vel.y = (vel.y / current_speed) * boid_settings.min_speed;
-        }
-        boid.velocity = vel.clamp(Vec2::splat(-max_speed), Vec2::splat(max_speed));
-        let vel = boid.velocity;
-        boid.position += vel;
-    }
-
-    // apply changes
-    for mut boid in boid_query.iter_mut() {
-        update_translation(&boid.0, &mut boid.1);
-    }
+    boid_query.iter_mut().for_each(|(boid, mut transform, _)| {
+        // rotate and move
+        transform.translation = boid.position.extend(50.0);
+        let heading = transform.translation.xy() + boid.velocity;
+        transform.look_at(heading.extend(0.0), Dir3::Z);
+    });
 }
 
-fn update_translation(boid: &Boid, transform: &mut Transform) {
-    // move
-    transform.translation = boid.position.extend(50.0);
-    // rotate
-    let heading = transform.translation.xy() + boid.velocity;
-    transform.look_at(heading.extend(0.0), Dir3::Z);
+fn update_basics(boid: &mut Boid, boid_settings: &Res<BoidSettings>) {
+    let pos = boid.position;
+    boid.acceleration += stay_in_bounds(pos);
+    //boid.position = loop_map(pos);
+
+    let mut new_velocity = boid.velocity + boid.acceleration;
+    let current_speed = sqrt(new_velocity.x * new_velocity.x + new_velocity.y * new_velocity.y);
+
+    if current_speed < boid_settings.min_speed {
+        new_velocity = (new_velocity / current_speed) * boid_settings.min_speed;
+    }
+
+    new_velocity = new_velocity.normalize_or_zero() * boid_settings.max_speed;
+
+    boid.velocity = new_velocity;
+    boid.position += new_velocity;
+}
+
+fn update_from_neighbors(boid: &mut Boid, boid_settings: &Res<'_, BoidSettings>, grid: &Grid) {
+    let mut rand = rand::rng();
+    let all_neighbors: Vec<&Boid> = get_near_boids(grid, boid.position, boid_settings.count);
+    let neighbors: Vec<&Boid> = all_neighbors
+        .into_iter()
+        .filter(|neighbor| {
+            neighbor.position.distance(boid.position) < boid_settings.cohesion_range
+                && neighbor.position != boid.position
+        })
+        .sample(&mut rand, boid_settings.other_boids_to_consider);
+    let neighbor_positions = neighbors.iter().map(|x| x.position).collect();
+
+    // keep seperate
+    boid.acceleration += seperation(
+        &boid.position,
+        &neighbor_positions,
+        &boid_settings.separation_range,
+        &boid_settings.separation_coeff,
+        &boid_settings.collision_coeff,
+    );
+
+    // keep together
+    boid.acceleration += cohesion(
+        &boid.position,
+        &neighbor_positions,
+        &boid_settings.cohesion_range,
+        &boid_settings.cohesion_coeff,
+    );
+
+    // align
+    let boid_clone = boid.clone();
+    boid.velocity += alignment(
+        &boid_clone,
+        &neighbors,
+        &boid_settings.alignment_range,
+        &boid_settings.alignment_coeff,
+    );
 }
 
 fn seperation(
@@ -137,46 +97,35 @@ fn seperation(
     other_boids: &Vec<Vec2>,
     seperation_range: &f32,
     seperation_coeff: &f32,
-    min_distance_between_boids: &f32,
-    collision_coeff: &f32,
+    _collision_coeff: &f32,
 ) -> Vec2 {
     let mut acceleration = Vec2::ZERO;
 
     other_boids.iter().for_each(|pos| {
         let distance = pos.distance(*boid);
 
-        // if almost crashing, strong seperation
-        if distance < *min_distance_between_boids && distance > 0.0 {
-            acceleration += (boid - pos) * collision_coeff
-
-        // standard seperation
-        } else if distance < *seperation_range {
-            acceleration += (boid - pos) * seperation_coeff
-        }
+        if distance < *seperation_range {
+            acceleration += (boid - pos) / distance;
+        };
     });
+    acceleration = acceleration.normalize_or_zero() * seperation_coeff;
     acceleration
 }
 
 fn cohesion(
     boid: &Vec2,
     other_boids: &Vec<Vec2>,
-    cohesion_range: &f32,
+    _cohesion_range: &f32,
     cohesion_coeff: &f32,
 ) -> Vec2 {
-    let mut acceleration = Vec2::ZERO;
-    let mut nearby_boids = 0;
+    let total: Vec2 = other_boids.iter().sum();
 
-    other_boids.iter().for_each(|pos| {
-        if pos.distance(*boid) < *cohesion_range {
-            nearby_boids += 1;
-            acceleration += pos;
-        }
-    });
-
-    if nearby_boids > 0 {
-        acceleration /= nearby_boids as f32;
-        acceleration = (acceleration - *boid) * *cohesion_coeff;
-    }
+    let average = if other_boids.len() > 0 {
+        total / (other_boids.len() as f32)
+    } else {
+        total
+    };
+    let acceleration = ((average - boid) / 2.0).normalize_or_zero() * cohesion_coeff;
     acceleration
 }
 
@@ -203,75 +152,89 @@ fn alignment(
     velocity
 }
 
-// avoiding walls
 fn stay_in_bounds(pos: Vec2) -> Vec2 {
     let mut acceleration = Vec2::ZERO;
     let turn_factor: f32 = 0.5;
     let margin = 5.0;
 
-    // avoid walls
     if pos.x < margin {
-        let force_multiplier = (margin - pos.x) / margin;
-        acceleration.x += (margin - pos.x) * turn_factor * force_multiplier;
+        acceleration.x += (margin - pos.x) / (pos.x - 0.0);
     } else if pos.x > (MAP_SIZE as f32 - margin) {
-        let force_multiplier = (MAP_SIZE as f32 - margin - pos.x) / margin;
-        acceleration.x -= (margin - pos.x) * turn_factor * force_multiplier;
+        acceleration.x = (MAP_SIZE as f32 - margin - pos.x) / (MAP_SIZE as f32 - pos.x);
     }
 
     if pos.y < margin {
-        let force_multiplier = (margin - pos.y) / margin;
-        acceleration.y += (margin - pos.y) * turn_factor * force_multiplier;
+        // let force_multiplier = (margin - pos.y) / margin;
+        // acceleration.y += (margin - pos.y) * turn_factor * force_multiplier;
+        acceleration.y += (margin - pos.y) / (pos.y - 0.0);
     } else if pos.y > (MAP_SIZE as f32 - margin) {
         let force_multiplier = (MAP_SIZE as f32 - margin - pos.y) / margin;
         acceleration.y -= (margin - pos.y) * turn_factor * force_multiplier;
     }
 
+    acceleration = acceleration.normalize_or_zero() * turn_factor;
     acceleration
 }
 
-fn show_vision_range(gizmos: &mut Gizmos, pos: &Vec2, size: f32) {
-    gizmos.circle_2d(*pos, size, WHITE);
-
-    //create_raycast(&mut gizmos, &query.0.position, heading_angle);
-    // fn create_raycast(gizmos: &mut Gizmos, pos: &Vec2, heading: f32) {
-    //     let left_dir = Dir2::new(Vec2::from_angle(1.85 + heading)).unwrap();
-    //     let right_dir = Dir2::new(Vec2::from_angle(1.3 + heading)).unwrap();
-    //
-    //     let left_ray = Ray2d {
-    //         origin: *pos,
-    //         direction: left_dir,
-    //     };
-    //     let right_ray = Ray2d {
-    //         origin: *pos,
-    //         direction: right_dir,
-    //     };
-    //
-    //     let _left_raycast = RayCast2d::from_ray(left_ray, 5.0);
-    //     let _right_raycast = RayCast2d::from_ray(right_ray, 5.0);
-
-    // gizmos.line_2d(
-    //     *pos,
-    //     *pos + left_raycast.ray.direction * left_raycast.max,
-    //     WHITE,
-    // );
-    // gizmos.line_2d(
-    //     *pos,
-    //     *pos + right_raycast.ray.direction * right_raycast.max,
-    //     WHITE,
-    // );
+fn loop_map(pos: Vec2) -> Vec2 {
+    let mut new_pos = pos;
+    if pos.x < 0.0 {
+        new_pos.x = MAP_SIZE as f32;
+    }
+    if pos.x > (MAP_SIZE as f32) {
+        new_pos.x = 0.0;
+    }
+    if pos.y < 0.0 {
+        new_pos.y = MAP_SIZE as f32;
+    }
+    if pos.y > (MAP_SIZE as f32) {
+        new_pos.y = 0.0;
+    }
+    new_pos
 }
+
+// fn show_vision_range(gizmos: &mut Gizmos, pos: &Vec2, size: f32) {
+//     gizmos.circle_2d(*pos, size, WHITE);
+
+//create_raycast(&mut gizmos, &query.0.position, heading_angle);
+// fn create_raycast(gizmos: &mut Gizmos, pos: &Vec2, heading: f32) {
+//     let left_dir = Dir2::new(Vec2::from_angle(1.85 + heading)).unwrap();
+//     let right_dir = Dir2::new(Vec2::from_angle(1.3 + heading)).unwrap();
+//
+//     let left_ray = Ray2d {
+//         origin: *pos,
+//         direction: left_dir,
+//     };
+//     let right_ray = Ray2d {
+//         origin: *pos,
+//         direction: right_dir,
+//     };
+//
+//     let _left_raycast = RayCast2d::from_ray(left_ray, 5.0);
+//     let _right_raycast = RayCast2d::from_ray(right_ray, 5.0);
+
+// gizmos.line_2d(
+//     *pos,
+//     *pos + left_raycast.ray.direction * left_raycast.max,
+//     WHITE,
+// );
+// gizmos.line_2d(
+//     *pos,
+//     *pos + right_raycast.ray.direction * right_raycast.max,
+//     WHITE,
+// );
+// }
 
 fn get_near_boids(grid: &Grid, pos: Vec2, _n: usize) -> Vec<&Boid> {
     let (cx, cy) = (
         (pos.x / grid.cell_size) as i32,
         (pos.y / grid.cell_size) as i32,
     );
-    let mut result = Vec::<&Boid>::with_capacity(100);
+    let mut result = Vec::<&Boid>::with_capacity(600);
     if let Some(boids) = grid.cells.get(&(cx, cy)) {
         result.extend(boids);
     }
-    let mut other_boids = Vec::<&Boid>::with_capacity(100);
-    //let rng = &mut rand::rng();
+    let mut other_boids = Vec::<&Boid>::with_capacity(600);
 
     // get surrounding cells
     for dx in -1..=1 {
@@ -284,7 +247,15 @@ fn get_near_boids(grid: &Grid, pos: Vec2, _n: usize) -> Vec<&Boid> {
             }
         }
     }
-    //result.extend(other_boids.sample(rng, 80));
     result.extend(other_boids);
     result
+}
+
+fn random_turn(boid: &mut Boid) {
+    let mut rand = rand::rng();
+    // let old_velocity = boid.velocity.clone();
+
+    let target = Vec2::from_angle(boid.velocity.to_angle() + rand.random_range(-0.08..=0.08));
+    boid.acceleration += boid.acceleration.rotate(target);
+    // //boid.velocity += boid.velocity.rotate(target);
 }

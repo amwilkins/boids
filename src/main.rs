@@ -22,7 +22,7 @@ mod prelude {
     pub use crate::spawner::*;
     pub use crate::systems::*;
     pub use bevy::prelude::*;
-    pub const MAP_SIZE: u32 = 250;
+    pub const MAP_SIZE: u32 = 150;
     pub const GRID_WIDTH: f32 = 0.05;
 }
 
@@ -60,16 +60,20 @@ fn main() {
         //.add_systems(PostStartup, log_state::log_state)
         .add_systems(
             Update,
-            (text::update_fps, camera_follow, camera_control::controls),
+            (
+                text::update_fps,
+                camera_follow,
+                camera_control::controls,
+                spatial_partition::create_partitions,
+            ),
         )
         .add_systems(
             FixedUpdate,
             (
-                spatial_partition::create_partitions,
+                //spatial_partition::create_partitions,
                 flock::flock,
                 camera_control::controls,
-            )
-                .chain(),
+            ), //.chain(),
         )
         .run();
 }

@@ -30,10 +30,7 @@ impl Grid {
             (boid.position.x / self.cell_size) as i32,
             (boid.position.y / self.cell_size) as i32,
         );
-
-        if self.cells.entry(cell).or_default().len() < 20 {
-            self.cells.entry(cell).or_default().push(boid.clone());
-        }
+        self.cells.entry(cell).or_default().push(boid.clone());
     }
 }
 
@@ -43,12 +40,12 @@ pub struct BoidSettings {
     pub cohesion_range: f32,
     pub alignment_range: f32,
     pub separation_range: f32,
-    pub min_distance_between_boids: f32,
+    //pub min_distance_between_boids: f32,
     pub cohesion_coeff: f32,
     pub alignment_coeff: f32,
     pub separation_coeff: f32,
     pub collision_coeff: f32,
-    pub random_coeff: f32,
+    //pub random_coeff: f32,
     pub min_speed: f32,
     pub max_speed: f32,
     pub other_boids_to_consider: usize,
@@ -57,19 +54,19 @@ pub struct BoidSettings {
 impl Default for BoidSettings {
     fn default() -> Self {
         BoidSettings {
-            count: 4500,
+            count: 1000,
             cohesion_range: 12.0,
             alignment_range: 10.0,
-            separation_range: 1.0,
-            min_distance_between_boids: 0.2,
-            cohesion_coeff: 0.005,
-            alignment_coeff: 0.4,
-            separation_coeff: 0.003,
+            separation_range: 1.5,
+            //min_distance_between_boids: 0.3,
+            cohesion_coeff: 0.0034,
+            alignment_coeff: 0.035,
+            separation_coeff: 0.057,
             collision_coeff: 40.0,
-            random_coeff: 0.5,
-            min_speed: 0.16,
-            max_speed: 0.16,
-            other_boids_to_consider: 70,
+            //random_coeff: 0.5,
+            min_speed: 0.2,
+            max_speed: 0.2,
+            other_boids_to_consider: 50,
         }
     }
 }

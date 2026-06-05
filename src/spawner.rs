@@ -1,5 +1,6 @@
 use crate::prelude::*;
 use bevy_rand::prelude::*;
+use rand::RngExt;
 use rand_core::Rng;
 
 pub fn spawn_boids(
@@ -19,8 +20,8 @@ pub fn spawn_boids(
         commands.spawn((
             Boid {
                 position: pos.xy(),
-                velocity: Vec2::ZERO,
-                acceleration: Vec2::new(0.0, 0.0),
+                velocity: Vec2::from_angle(rng.random_range(-3.14..=3.14)),
+                acceleration: Vec2::ZERO,
             },
             SpatialEntity,
             Flock,
